@@ -50,11 +50,11 @@ func ShortestPath(a, b FieldPath) int {
 
 type Field struct {
 	*types.Var
-	Tags []Tag
+	Tag  string
 	Path FieldPath
 }
 
-type FieldMap map[string][]Field
+type Fields map[string][]Field
 
 func fieldTypeName(t types.Type) string {
 	switch t := t.(type) {
@@ -67,39 +67,15 @@ func fieldTypeName(t types.Type) string {
 	}
 }
 
-func (f *Field) Tag(key string) *Tag {
-	for i := range f.Tags {
-		if f.Tags[i].Key == key {
-			return &f.Tags[i]
-		}
-	}
-	return nil
-}
-
-func (fields FieldMap) Get(name string) *Field {
+func (fields Fields) Get(name string) *Field {
 	if fields, ok := fields[name]; ok && len(fields) > 0 {
 		return &fields[0]
 	}
 	return nil
 }
-func (f *Field) AddTag(tag ...Tag) {
-	if len(f.Tags) == 0 {
-		f.Tags = append(f.Tags, tag...)
-		return
-	}
-	for _, t := range tag {
-		oldTag := f.Tag(t.Key)
-		if oldTag == nil {
-			f.Tags = append(f.Tags, t)
-			continue
-		}
-		*oldTag = t
-	}
-	return
-}
 
 // Add adds a field to a field map handling duplicates.
-func (fields FieldMap) Add(field Field) FieldMap {
+func (fields Fields) Add(field Field) Fields {
 	name := field.Name()
 	if fields == nil {
 		fields = make(map[string][]Field)
@@ -114,7 +90,7 @@ func (fields FieldMap) Add(field Field) FieldMap {
 
 	switch ShortestPath(existing.Path, field.Path) {
 	case 0:
-		existing.AddTag(field.Tags...)
+		*existing = field
 	case 1:
 		fields[name] = append([]Field{field}, fields[name]...)
 	default:
@@ -127,17 +103,17 @@ func (fields FieldMap) Add(field Field) FieldMap {
 	return fields
 }
 
-// Merge merges a struct's fields to a field map.
-func NewFields(s *types.Struct, tag string, embed bool) FieldMap {
+// NewFields creates a field map for a struct.
+func NewFields(s *types.Struct, embed bool) Fields {
 	if s == nil {
 		return nil
 	}
-	fields := FieldMap(make(map[string][]Field))
-	fields = fields.Merge(s, tag, embed, nil)
+	fields := Fields(make(map[string][]Field))
+	fields = fields.Merge(s, embed, nil)
 	return fields
 
 }
-func (fields FieldMap) Merge(s *types.Struct, tagKey string, embed bool, path FieldPath) FieldMap {
+func (fields Fields) Merge(s *types.Struct, embed bool, path FieldPath) Fields {
 	if fields == nil || s == nil {
 		return nil
 	}
@@ -146,26 +122,21 @@ func (fields FieldMap) Merge(s *types.Struct, tagKey string, embed bool, path Fi
 
 	for i := 0; i < s.NumFields(); i++ {
 		field := s.Field(i)
-		tag, tagged := ParseTag(s.Tag(i), tagKey)
 		path = append(path[:depth], FieldIndex{i, field.Type(), field.Name()})
-		if !tagged && field.Anonymous() {
+		if embed && field.Anonymous() {
 			t := Resolve(field.Type())
 			if ptr, isPointer := t.(*types.Pointer); isPointer {
 				t = ptr.Elem()
 			}
 			tt := Resolve(t)
-			if tt, ok := tt.(*types.Struct); ok && embed {
+			if tt, ok := tt.(*types.Struct); ok {
 				// embedded struct
-				fields = fields.Merge(tt, tagKey, embed, path)
+				fields = fields.Merge(tt, embed, path)
 				continue
 			}
 		}
 
-		f := Field{Var: field, Path: path.Copy()}
-		if tagged {
-			f.Tags = []Tag{tag}
-		}
-		fields = fields.Add(f)
+		fields = fields.Add(Field{field, s.Tag(i), path.Copy()})
 
 	}
 	return fields
