@@ -9,6 +9,7 @@ type FieldIndex struct {
 	Index int
 	Type  types.Type
 	Name  string
+	Tag   string
 }
 
 type FieldPath []FieldIndex
@@ -122,7 +123,8 @@ func (fields Fields) Merge(s *types.Struct, embed bool, path FieldPath) Fields {
 
 	for i := 0; i < s.NumFields(); i++ {
 		field := s.Field(i)
-		path = append(path[:depth], FieldIndex{i, field.Type(), field.Name()})
+		tag := s.Tag(i)
+		path = append(path[:depth], FieldIndex{i, field.Type(), field.Name(), tag})
 		if embed && field.Anonymous() {
 			t := Resolve(field.Type())
 			if ptr, isPointer := t.(*types.Pointer); isPointer {
@@ -136,7 +138,7 @@ func (fields Fields) Merge(s *types.Struct, embed bool, path FieldPath) Fields {
 			}
 		}
 
-		fields = fields.Add(Field{field, s.Tag(i), path.Copy()})
+		fields = fields.Add(Field{field, tag, path.Copy()})
 
 	}
 	return fields
