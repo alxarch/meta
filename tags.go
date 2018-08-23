@@ -9,6 +9,7 @@ import (
 )
 
 type Tag struct {
+	Key     string
 	Name    string
 	Missing bool
 	Params  Params
@@ -121,11 +122,12 @@ func (p Params) ToFloat(key string) (float64, error) {
 	return strconv.ParseFloat(p.Get(key), 64)
 }
 
-func ParseTag(tag, key string) (t Tag) {
-	name, ok := LookupTag(tag, key)
-	if t.Missing = !ok; t.Missing {
+func ParseTag(tag, key string) (t Tag, ok bool) {
+	name, ok := reflect.StructTag(tag).Lookup(key)
+	if !ok {
 		return
 	}
+	t.Key = key
 	t.Name = name
 	if i := strings.IndexByte(name, ','); i != -1 {
 		t.Name = tag[:i]
@@ -159,8 +161,4 @@ func ParseTag(tag, key string) (t Tag) {
 	}
 	return
 
-}
-
-func LookupTag(tag, key string) (string, bool) {
-	return reflect.StructTag(tag).Lookup(key)
 }
