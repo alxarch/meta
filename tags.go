@@ -15,6 +15,15 @@ type Tag struct {
 	Params  Params
 }
 
+func (p Params) With(param string) Params {
+
+	if p == nil {
+		p = Params{}
+	}
+	p.Values().Set(param, param)
+	return p
+}
+
 type Params url.Values
 
 func (p Params) Values() url.Values {
@@ -123,16 +132,16 @@ func (p Params) ToFloat(key string) (float64, error) {
 }
 
 func ParseTag(tag, key string) (t Tag, ok bool) {
-	name, ok := reflect.StructTag(tag).Lookup(key)
+	tag, ok = reflect.StructTag(tag).Lookup(key)
 	if !ok {
 		return
 	}
 	t.Key = key
-	t.Name = name
-	if i := strings.IndexByte(name, ','); i != -1 {
+	if i := strings.IndexByte(tag, ','); i != -1 {
 		t.Name = tag[:i]
 		tag = tag[i+1:]
 	} else {
+		t.Name = tag
 		return
 	}
 	for len(tag) > 0 {
@@ -161,4 +170,9 @@ func ParseTag(tag, key string) (t Tag, ok bool) {
 	}
 	return
 
+}
+
+func HasTag(tag, key string) bool {
+	_, ok := reflect.StructTag(tag).Lookup(key)
+	return ok
 }

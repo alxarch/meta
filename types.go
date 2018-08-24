@@ -1,6 +1,9 @@
 package meta
 
-import "go/types"
+import (
+	"go/token"
+	"go/types"
+)
 
 // Resolve resolves to an underlying non named type.
 func Resolve(typ types.Type) types.Type {
@@ -14,23 +17,63 @@ func Resolve(typ types.Type) types.Type {
 	return typ
 }
 
-func QName(t types.Type) (string, string, bool) {
-	switch t := t.(type) {
-	case *types.Named:
-		obj := t.Obj()
-		if obj == nil {
-			return "", t.String(), false
+func TypeImports(imports []*types.Package, t ...interface{}) []*types.Package {
+	for _, t := range t {
+		switch t := t.(type) {
+		case *types.Named:
+			if t != nil {
+				imports = TypeImports(imports, t.Obj())
+			}
+		case *types.Scope:
+			if t != nil {
+				for _, name := range t.Names() {
+					imports = TypeImports(imports, t.Lookup(name))
+				}
+			}
+		case *types.Pointer:
+			if t != nil {
+				imports = TypeImports(imports, t.Elem())
+			}
+		case *types.Map:
+			if t != nil {
+				imports = TypeImports(imports, t.Elem())
+				imports = TypeImports(imports, t.Elem())
+			}
+		case *types.Slice:
+			if t != nil {
+				imports = TypeImports(imports, t.Elem())
+			}
+		case *types.Chan:
+			if t != nil {
+				imports = TypeImports(imports, t.Elem())
+			}
+		case *types.Signature:
+			if t != nil {
+				imports = TypeImports(imports, t.Recv(), t.Params(), t.Results())
+			}
+		case *types.Var:
+			if t != nil {
+				imports = TypeImports(imports, t.Type())
+			}
+		case *types.Tuple:
+			if t != nil {
+				for i := 0; i < t.Len(); i++ {
+					imports = TypeImports(imports, t.At(i))
+				}
+			}
+		case *types.Package:
+			if t != nil {
+				imports = append(imports, t)
+			}
+		case *types.TypeName:
+			if t != nil {
+				imports = TypeImports(imports, t.Pkg())
+			}
 		}
-		pkg := obj.Pkg()
-		if pkg != nil {
-			return pkg.Name(), obj.Name(), true
-		}
-		return "", obj.Name(), true
-	case *types.Pointer:
-		return QName(t.Elem())
-	default:
-		return "", t.String(), false
+
 	}
+	return imports
+
 }
 
 func Embedded(field *types.Var) (*types.Struct, bool) {
@@ -143,4 +186,22 @@ func ConvertibleTo(t types.Type) TypeFilter {
 func IsStruct(t types.Type) (ok bool) {
 	_, ok = Struct(t)
 	return
+}
+
+func Vars(pkg *types.Package, typ ...types.Type) (v []*types.Var) {
+	v = make([]*types.Var, len(typ))
+	for i, typ := range typ {
+		v[i] = types.NewVar(token.NoPos, pkg, "", typ)
+	}
+	return
+}
+
+func MakeInterface(name string, params []types.Type, results []types.Type, v bool) *types.Interface {
+	vparams := Vars(nil, params...)
+	vresults := Vars(nil, results...)
+	sig := types.NewSignature(nil, types.NewTuple(vparams...), types.NewTuple(vresults...), v)
+	fn := types.NewFunc(token.NoPos, nil, name, sig)
+	iface := types.NewInterface([]*types.Func{fn}, []*types.Named{})
+	return iface.Complete()
+
 }

@@ -7,9 +7,12 @@ import (
 
 type FieldIndex struct {
 	Index int
-	Type  types.Type
-	Name  string
-	Tag   string
+	*types.Var
+	Tag string
+}
+
+func (f FieldIndex) Name() string {
+	return FieldName(f.Var)
 }
 
 type FieldPath []FieldIndex
@@ -25,7 +28,7 @@ func (p FieldPath) String() string {
 	buf := make([]byte, 0, len(p)*16)
 	for i := range p {
 		buf = append(buf, '.')
-		buf = append(buf, p[i].Name...)
+		buf = append(buf, FieldName(p[i].Var)...)
 	}
 	return string(buf)
 }
@@ -55,8 +58,30 @@ type Field struct {
 	Path FieldPath
 }
 
+func (f Field) WithTag(key string) Field {
+	for i, ff := range f.Path {
+		if HasTag(ff.Tag, key) {
+			return Field{
+				Var:  ff.Var,
+				Tag:  ff.Tag,
+				Path: f.Path[:i+1],
+			}
+		}
+	}
+	return f
+}
+
 type Fields map[string][]Field
 
+func FieldName(field *types.Var) string {
+	if field == nil || !field.IsField() {
+		return ""
+	}
+	if field.Anonymous() {
+		return fieldTypeName(field.Type())
+	}
+	return field.Name()
+}
 func fieldTypeName(t types.Type) string {
 	switch t := t.(type) {
 	case *types.Named:
@@ -68,7 +93,7 @@ func fieldTypeName(t types.Type) string {
 	}
 }
 
-func (fields Fields) Get(name string) *Field {
+func (fields Fields) get(name string) *Field {
 	if fields, ok := fields[name]; ok && len(fields) > 0 {
 		return &fields[0]
 	}
@@ -83,7 +108,7 @@ func (fields Fields) Add(field Field) Fields {
 		fields[name] = []Field{field}
 		return fields
 	}
-	existing := fields.Get(name)
+	existing := fields.get(name)
 	if existing == nil {
 		fields[name] = []Field{field}
 		return fields
@@ -124,7 +149,7 @@ func (fields Fields) Merge(s *types.Struct, embed bool, path FieldPath) Fields {
 	for i := 0; i < s.NumFields(); i++ {
 		field := s.Field(i)
 		tag := s.Tag(i)
-		path = append(path[:depth], FieldIndex{i, field.Type(), field.Name(), tag})
+		path = append(path[:depth], FieldIndex{i, field, tag})
 		if embed && field.Anonymous() {
 			t := Resolve(field.Type())
 			if ptr, isPointer := t.(*types.Pointer); isPointer {

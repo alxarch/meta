@@ -16,11 +16,24 @@ import (
 
 type Package struct {
 	*types.Package
-	fset  *token.FileSet
-	info  types.Info
-	ast   *ast.Package
-	files []*ast.File
-	stat  os.FileInfo
+	fset    *token.FileSet
+	info    types.Info
+	ast     *ast.Package
+	files   []*ast.File
+	stat    os.FileInfo
+	qual    types.Qualifier
+	typdefs map[string]*types.Named
+}
+
+func (p *Package) Qualifier() types.Qualifier {
+	if p.qual == nil {
+		p.qual = types.RelativeTo(p.Package)
+	}
+	return p.qual
+}
+
+func (p *Package) Code(format string, args ...interface{}) (c Code) {
+	return c.QPrintf(p.Qualifier(), format, args...)
 }
 
 func (p *Package) FindImport(pkgName string) *types.Package {
@@ -89,9 +102,20 @@ func ParsePackage(name, path string, fileFilter func(os.FileInfo) bool, mode par
 		Package: pkg,
 		files:   files,
 		info:    info,
+		qual:    types.RelativeTo(pkg),
 	}
 	return
 
+}
+func (p *Package) NamedTypes() map[string]*types.Named {
+	named := map[string]*types.Named{}
+	p.DefinedTypes(func(t types.Type) bool {
+		if t, ok := t.(*types.Named); ok {
+			named[t.Obj().Name()] = t
+		}
+		return false
+	})
+	return named
 }
 
 type Var struct {
@@ -101,17 +125,30 @@ type Var struct {
 }
 
 func (p *Package) DefinedTypes(filter TypeFilter) (typs []types.Type) {
+	return p.DefinedTypesN(-1, filter)
+}
+func (p *Package) DefinedTypesN(maxResults int, filter TypeFilter) (typs []types.Type) {
 	if p == nil || p.info.Defs == nil {
 		return nil
 	}
+	if maxResults == 0 {
+		maxResults = -1
+	}
 	typs = make([]types.Type, 0, 64)
 	for _, f := range p.files {
+		if maxResults == 0 {
+			return
+		}
 		ForEachTypeSpec(f, func(t *ast.TypeSpec) {
+			if maxResults == 0 {
+				return
+			}
 			if def := p.info.Defs[t.Name]; def != nil {
 				if typ := def.Type(); typ != nil {
 					if filter == nil || filter(typ) {
 						typs = append(typs, typ)
 					}
+					maxResults--
 				}
 			}
 		})
@@ -138,38 +175,24 @@ func (p *Package) DefinedVars(filter TypeFilter) (vars []Var) {
 	return
 }
 
-func (p *Package) QName(t types.Type) (pkgName, typName string, ok bool) {
-	pkgName, typName, ok = QName(t)
-	if !ok {
-		return
-	}
-	if pkgName == p.Package.Name() {
-		pkgName = ""
-	}
-	return
+func (p *Package) TypeString(t types.Type) string {
+	return types.TypeString(t, p.qual)
 }
 
 // LookupType looks up a named type in the package's definitions.
-func (p *Package) LookupType(name string) (t *types.Named, spec *ast.TypeSpec) {
-	for i, def := range p.info.Defs {
-		if def == nil {
-			continue
-		}
-		if spec = TypeSpec(i); spec == nil {
-			continue
-		}
-
-		typ := def.Type()
-		if typ == nil {
-			continue
-		}
-		if t, ok := typ.(*types.Named); ok {
-			if obj := t.Obj(); obj != nil && obj.Name() == name {
-				return t, spec
+func (p *Package) LookupType(name string) (T *types.Named) {
+	p.DefinedTypesN(-1, func(t types.Type) bool {
+		if t != nil {
+			if t, ok := t.(*types.Named); ok && t.Obj() != nil {
+				if t.Obj().Name() == name {
+					T = t
+					return true
+				}
 			}
 		}
-	}
-	return nil, nil
+		return false
+	})
+	return
 }
 
 func (p *Package) Fprint(w io.Writer, node interface{}) error {
