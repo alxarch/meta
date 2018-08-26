@@ -5,18 +5,6 @@ import (
 	"go/types"
 )
 
-// Resolve resolves to an underlying non named type.
-func Resolve(typ types.Type) types.Type {
-	for typ != nil {
-		if _, ok := typ.(*types.Named); ok {
-			typ = typ.Underlying()
-		} else {
-			break
-		}
-	}
-	return typ
-}
-
 func TypeImports(imports []*types.Package, t ...interface{}) []*types.Package {
 	for _, t := range t {
 		switch t := t.(type) {
@@ -83,9 +71,25 @@ func Embedded(field *types.Var) (*types.Struct, bool) {
 	return nil, false
 }
 
+func Base(t types.Type) string {
+	return types.TypeString(t, func(*types.Package) string {
+		return ""
+	})
+
+}
+
+func String(t types.Type) (*types.Basic, bool) {
+	if t != nil {
+		if s, ok := t.Underlying().(*types.Basic); ok && s.Kind() == types.String {
+			return s, true
+		}
+	}
+	return nil, false
+
+}
 func Struct(t types.Type) (*types.Struct, bool) {
-	if t := Resolve(t); t != nil {
-		if s, ok := t.(*types.Struct); ok {
+	if t != nil {
+		if s, ok := t.Underlying().(*types.Struct); ok {
 			return s, true
 		}
 	}
@@ -93,8 +97,8 @@ func Struct(t types.Type) (*types.Struct, bool) {
 }
 
 func Pointer(t types.Type) (*types.Pointer, bool) {
-	if t := Resolve(t); t != nil {
-		if s, ok := t.(*types.Pointer); ok {
+	if t != nil {
+		if s, ok := t.Underlying().(*types.Pointer); ok {
 			return s, true
 		}
 	}
@@ -102,8 +106,8 @@ func Pointer(t types.Type) (*types.Pointer, bool) {
 }
 
 func Slice(t types.Type) (*types.Slice, bool) {
-	if t := Resolve(t); t != nil {
-		if s, ok := t.(*types.Slice); ok {
+	if t != nil {
+		if s, ok := t.Underlying().(*types.Slice); ok {
 			return s, true
 		}
 	}
@@ -111,10 +115,10 @@ func Slice(t types.Type) (*types.Slice, bool) {
 }
 
 func Sized(t types.Type) bool {
-	if t = Resolve(t); t == nil {
+	if t == nil {
 		return false
 	}
-	switch t := t.(type) {
+	switch t := t.Underlying().(type) {
 	case *types.Pointer:
 		return Sized(t.Elem())
 	case *types.Array:
@@ -129,10 +133,10 @@ func Sized(t types.Type) bool {
 }
 
 func Nilable(t types.Type) bool {
-	if t = Resolve(t); t == nil {
+	if t == nil {
 		return false
 	}
-	switch t.(type) {
+	switch t.Underlying().(type) {
 	case *types.Pointer:
 		return true
 	case *types.Array:
@@ -147,8 +151,8 @@ func Nilable(t types.Type) bool {
 }
 
 func Basic(t types.Type) (*types.Basic, bool) {
-	if t = Resolve(t); t != nil {
-		if t, ok := t.(*types.Basic); ok {
+	if t != nil {
+		if t, ok := t.Underlying().(*types.Basic); ok {
 			return t, ok
 		}
 	}
@@ -181,6 +185,11 @@ func ConvertibleTo(t types.Type) TypeFilter {
 	return func(v types.Type) bool {
 		return t != nil && v != nil && types.ConvertibleTo(v, t)
 	}
+}
+
+func IsString(t types.Type) (ok bool) {
+	_, ok = String(t)
+	return
 }
 
 func IsStruct(t types.Type) (ok bool) {

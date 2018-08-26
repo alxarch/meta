@@ -151,12 +151,11 @@ func (fields Fields) Merge(s *types.Struct, embed bool, path FieldPath) Fields {
 		tag := s.Tag(i)
 		path = append(path[:depth], FieldIndex{i, field, tag})
 		if embed && field.Anonymous() {
-			t := Resolve(field.Type())
+			t := field.Type().Underlying()
 			if ptr, isPointer := t.(*types.Pointer); isPointer {
 				t = ptr.Elem()
 			}
-			tt := Resolve(t)
-			if tt, ok := tt.(*types.Struct); ok {
+			if tt, ok := t.Underlying().(*types.Struct); ok {
 				// embedded struct
 				fields = fields.Merge(tt, embed, path)
 				continue
