@@ -199,10 +199,11 @@ func (p *Package) Fprint(w io.Writer, node interface{}) error {
 	return printer.Fprint(w, p.fset, node)
 }
 
-// func inject(fset *token.FileSet, target, pkg string) (*ast.File, error) {
-// 	src := fmt.Sprintf(`package %s
-// 	import _ %q
-// 	`, target, pkg)
-// 	filename := fmt.Sprintf("njson/inject/%s.go", pkg)
-// 	return parser.ParseFile(fset, filename, src, 0)
-// }
+func MustImport(path string) *types.Package {
+	imp := importer.Default()
+	pkg, err := imp.Import(path)
+	if err != nil {
+		panic(err)
+	}
+	return pkg
+}
