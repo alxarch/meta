@@ -205,6 +205,12 @@ func Vars(pkg *types.Package, typ ...types.Type) (v []*types.Var) {
 	return
 }
 
+func ErrorInterface() *types.Interface {
+	return MakeInterface("Error", nil, []types.Type{
+		types.Typ[types.String],
+	}, false)
+}
+
 func MakeInterface(name string, params []types.Type, results []types.Type, v bool) *types.Interface {
 	vparams := Vars(nil, params...)
 	vresults := Vars(nil, results...)
