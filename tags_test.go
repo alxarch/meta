@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseTag(t *testing.T) {
-	tag, ok := meta.ParseTag(`json:"Foo,omitempty"`, "json")
+	tag, ok := meta.ParseTag(`json:"Foo,omitempty,raw"`, "json")
 	if !ok {
 		t.Errorf("Tag not found")
 		return
@@ -20,6 +20,13 @@ func TestParseTag(t *testing.T) {
 
 	}
 	if !tag.Params.Has("omitempty") {
+		t.Errorf("Invalid tag params %s", tag.Params.Values())
+	}
+
+	if tag.Params.Get("raw") != "raw" {
+		t.Errorf("Invalid tag params %s", tag.Params.Values())
+	}
+	if !tag.Params.Has("raw") {
 		t.Errorf("Invalid tag params %s", tag.Params.Values())
 	}
 

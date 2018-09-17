@@ -144,8 +144,8 @@ func ParseTag(tag, key string) (t Tag, ok bool) {
 		t.Name = tag
 		return
 	}
+	params := url.Values{}
 	for len(tag) > 0 {
-		params := url.Values{}
 		if i := strings.IndexByte(tag, '='); i != -1 {
 			k := tag[:i]
 			tag = tag[i+1:]
@@ -163,10 +163,9 @@ func ParseTag(tag, key string) (t Tag, ok bool) {
 			params.Add(tag, tag)
 			tag = ""
 		}
-		if len(params) > 0 {
-			t.Params = Params(params)
-		}
-
+	}
+	if len(params) > 0 {
+		t.Params = Params(params)
 	}
 	return
 
