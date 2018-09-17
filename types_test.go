@@ -19,3 +19,15 @@ func TestMakeInterface(t *testing.T) {
 	}
 
 }
+
+func TestIsString(t *testing.T) {
+	name := types.NewTypeName(0, nil, "Foo", nil)
+	str := types.NewNamed(name, types.Typ[types.String], nil)
+	if !meta.IsString(str) {
+		t.Errorf("IsString not")
+	}
+	if !meta.IsString(types.Typ[types.String]) {
+		t.Errorf("IsString not")
+	}
+
+}
