@@ -10,24 +10,26 @@ import (
 	"go/types"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
 type Package struct {
-	*types.Package
-	fset    *token.FileSet
-	info    types.Info
-	ast     *ast.Package
-	files   []*ast.File
-	stat    os.FileInfo
-	qual    types.Qualifier
-	typdefs map[string]*types.Named
+	pkg   *types.Package
+	fset  *token.FileSet
+	info  types.Info
+	files []*ast.File
+	qual  types.Qualifier
 }
 
+func (p *Package) Name() string {
+	return p.pkg.Name()
+}
+func (p *Package) Path() string {
+	return p.pkg.Path()
+}
 func (p *Package) Qualifier() types.Qualifier {
 	if p.qual == nil {
-		p.qual = types.RelativeTo(p.Package)
+		p.qual = types.RelativeTo(p.pkg)
 	}
 	return p.qual
 }
@@ -37,10 +39,10 @@ func (p *Package) Code(format string, args ...interface{}) (c Code) {
 }
 
 func (p *Package) FindImport(path string) *types.Package {
-	if p == nil || p.Package == nil {
+	if p == nil || p.pkg == nil {
 		return nil
 	}
-	for _, pkg := range p.Package.Imports() {
+	for _, pkg := range p.pkg.Imports() {
 		if pkg.Path() == path {
 			return pkg
 		}
@@ -52,28 +54,57 @@ func IgnoreTestFiles(f os.FileInfo) bool {
 	return !strings.HasSuffix(f.Name(), "_test.go")
 }
 
-func ParsePackage(name, path string, fileFilter func(os.FileInfo) bool, mode parser.Mode, astFilter func(f *ast.File) bool) (p *Package, err error) {
-	stat, err := os.Stat(path)
+type Parser struct {
+	fset  *token.FileSet
+	mode  parser.Mode
+	files map[string][]*ast.File
+}
+
+func NewParser(mode parser.Mode) *Parser {
+	p := Parser{
+		fset:  token.NewFileSet(),
+		mode:  mode,
+		files: make(map[string][]*ast.File),
+	}
+	return &p
+}
+
+func (p *Parser) ParseFile(filename string, src interface{}) (string, error) {
+	f, err := parser.ParseFile(p.fset, filename, src, p.mode)
 	if err != nil {
-		return
+		return "", err
 	}
-	if stat.IsDir() {
-		path = filepath.Clean(path)
-	} else {
-		path = filepath.Dir(path)
-	}
-	if name == "" {
-		name = filepath.Base(path)
-	}
-	fset := token.NewFileSet()
-	astPkgs, err := parser.ParseDir(fset, path, fileFilter, mode)
+	pkgName := f.Name.String()
+	p.files[pkgName] = append(p.files[pkgName], f)
+	return pkgName, nil
+}
+
+func (p *Parser) ParseDir(path string, filter func(os.FileInfo) bool) error {
+	packages, err := parser.ParseDir(p.fset, path, filter, p.mode)
 	if err != nil {
-		return
+		return err
 	}
-	astPkg := astPkgs[name]
-	if astPkg == nil {
-		err = fmt.Errorf("Target package %q not found in path %s", name, path)
-		return
+	for name, pkg := range packages {
+		for _, f := range pkg.Files {
+			p.files[name] = append(p.files[name], f)
+		}
+	}
+	return nil
+}
+
+func (p *Parser) Package(name, path string, filter func(*ast.File) bool) (*Package, error) {
+	files, ok := p.files[name]
+	if !ok {
+		return nil, fmt.Errorf("Package %s not parsed", name)
+	}
+	if filter != nil {
+		filtered := make([]*ast.File, 0, len(files))
+		for _, f := range files {
+			if filter(f) {
+				filtered = append(filtered, f)
+			}
+		}
+		files = filtered
 	}
 	config := types.Config{
 		IgnoreFuncBodies: true,
@@ -84,29 +115,20 @@ func ParsePackage(name, path string, fileFilter func(os.FileInfo) bool, mode par
 		Types: make(map[ast.Expr]types.TypeAndValue),
 		Defs:  make(map[*ast.Ident]types.Object),
 	}
-	files := make([]*ast.File, 0, len(astPkg.Files))
-	for _, file := range astPkg.Files {
-		if astFilter == nil || astFilter(file) {
-			files = append(files, file)
-		}
-	}
-	pkg, err := config.Check(path, fset, files, &info)
+	pkg, err := config.Check(path, p.fset, files, &info)
 	if err != nil {
-		return
+		return nil, err
 	}
-	p = new(Package)
-	*p = Package{
-		fset:    fset,
-		stat:    stat,
-		ast:     astPkg,
-		Package: pkg,
-		files:   files,
-		info:    info,
-		qual:    types.RelativeTo(pkg),
-	}
-	return
+	return &Package{
+		pkg:   pkg,
+		fset:  p.fset,
+		info:  info,
+		files: files,
+		qual:  types.RelativeTo(pkg),
+	}, nil
 
 }
+
 func (p *Package) NamedTypes() map[string]*types.Named {
 	named := map[string]*types.Named{}
 	p.DefinedTypes(func(t types.Type) bool {
@@ -127,6 +149,7 @@ type Var struct {
 func (p *Package) DefinedTypes(filter TypeFilter) (typs []types.Type) {
 	return p.DefinedTypesN(-1, filter)
 }
+
 func (p *Package) DefinedTypesN(maxResults int, filter TypeFilter) (typs []types.Type) {
 	if p == nil || p.info.Defs == nil {
 		return nil
