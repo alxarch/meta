@@ -36,12 +36,12 @@ func (p *Package) Code(format string, args ...interface{}) (c Code) {
 	return c.QPrintf(p.Qualifier(), format, args...)
 }
 
-func (p *Package) FindImport(pkgName string) *types.Package {
+func (p *Package) FindImport(path string) *types.Package {
 	if p == nil || p.Package == nil {
 		return nil
 	}
 	for _, pkg := range p.Package.Imports() {
-		if pkg.Name() == pkgName {
+		if pkg.Path() == path {
 			return pkg
 		}
 	}
